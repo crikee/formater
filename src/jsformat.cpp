@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <string>
 using namespace std ;
@@ -79,15 +80,17 @@ struct token{
 }temp;
 
 void trim_output(){
-	unsigned int size = output.size() ; 
-	while(size && (output[size-1]==" "||output[size-1]==indent_string)){
+//	cout << "trim_output begin" << endl ; 	
+	while(output.size() && (output[output.size()-1]==" "||output[output.size()-1]==indent_string)){
 		output.pop_back();
 	}
+//	cout << "trim_output end" << endl ;
 }
 
 void print_newline(){
-	unsigned int size = output.size() ; 
+//	cout << "print_newline begin" << endl ; 
 	trim_output();
+	unsigned int size = output.size() ;
 	if(!size){
 		return; // no newline on start of file
 	}
@@ -96,19 +99,24 @@ void print_newline(){
 	}
 	for(unsigned int i=0;i<indent_level;i++){
 		output.push_back(indent_string) ;
-	}	
+	}
+//	cout << "print_newline end" << endl ;	
 }
 
 void print_space(){
+//	cout << "print_space begin" << endl ;
 	unsigned int size = output.size() ; 
 	string last_output = size ? output[size - 1] : " ";
 	if (last_output != " "&& last_output != "\n" && last_output != indent_string) { // prevent occassional duplicate space
 		output.push_back(" ");
 	}
+//	cout << "print_space end" << endl ;
 }
 
 void print_token(){
+//	cout << "print_token begin" << endl ;	
 	output.push_back(temp.text);
+//	cout << "print_token end" << endl ;	
 }
 
 void indent(){
@@ -124,8 +132,7 @@ void unindent(){
 
 
 void remove_indent(){
-	unsigned int size = output.size();
-	if (size && output[size - 1] == indent_string) {
+	if (output.size() && output[output.size()-1] == indent_string) {
 		output.pop_back();
 	}
 }
@@ -161,14 +168,14 @@ token get_next_token(){
 		if(parser_pos >= input.size()){
 			return token("",TK_EOF);
 		}
-		c += input[parser_pos];
+		c = string(1,input[parser_pos]);
 		parser_pos += 1 ;
 		if(c == "\n"){
 			n_newlines += 1 ;
 		} 
 		
 	}while(in_array(c,whitespaces));
-	
+	 
 	if(n_newlines > 1){
 		for(int i=0 ; i<2 ; i++){
 			print_newline();
@@ -179,13 +186,13 @@ token get_next_token(){
 	
 	if(in_array(c,wordchars)){
 		if (parser_pos < input.size()) {
-			while (in_array(""+input[parser_pos], wordchars)) {
+			while (in_array(string(1,input[parser_pos]), wordchars)) {
 				c += input[parser_pos];
 				parser_pos += 1;
 				if (parser_pos == input.size()) {
 					break;
 				}
-			}
+			} 
 		}
 			
 		
@@ -299,24 +306,67 @@ token get_next_token(){
 	return token(c, TK_UNKNOWN) ;
 }
 
-
+string join(fragments ff){
+	string s = "" ;
+	for(unsigned int i=0 ; i<ff.size(); i++)
+		s += ff[i] ;
+	return s ;
+}
 
 int main(){
 	
-	bool var_line = false , var_line_tained = false ;
+	string sfilename ;
+	cin >> sfilename ;
+	string soutfilename = sfilename + "_format.js" ;
+	sfilename += ".js" ;
+	const char * filename = sfilename.c_str();
 	
+	ifstream ifile ;
+	ofstream ofile ;
+	string out_text ;
+	ifile.open(filename);
+	if(ifile.is_open()){
+		while(!ifile.eof()){
+			getline(ifile,out_text);
+			
+			input += out_text ;
+		}
+	}
+	else
+		cout << "err" << endl ;
+	cout << input << endl ;
+	//return 0 ;
+	
+	bool var_line = false ;
+	bool var_line_tainted = false ;
+	bool start_delim = true ;
+	bool end_delim = true ;
+	
+	indent_char = '\t' ;
+	indent_size = 1 ;
+
+	indent_string = "" ;
+	while (indent_size--) {
+		indent_string += indent_char;
+	}
+
+	last_word = "" ; // last 'TK_WORD' passed
+	last_type = TK_START_EXPR ; // last token type
+	last_text = "" ;
+    
 	string current_mode = "BLOCK" ;
 	string prefix = "" ;
 	
 	indent_level = 0 ;
 	parser_pos = 0 ;
 	bool in_case = false ;
-	
+
 	while(true){
 		temp = get_next_token();
 		string tem_te 		= temp.text ;
 		token_type tem_tp 	= temp.type ;
-		
+		cout << tem_te << "#" ;
+		cout << tem_tp << "*" ;
 		if(tem_tp == TK_EOF)
 			break ;
 		
@@ -394,20 +444,195 @@ int main(){
 				prefix = "NONE" ;
 				if(last_type == TK_END_BLOCK){
 					if(!in_array(tem_te , else_catch_finallys)){
+						prefix = "NEWLINE";
+					} 
+					else {
+						prefix = "SPACE";
+						print_space();
 					}
 				}
+				else if (last_type == TK_END_COMMAND && (current_mode == "BLOCK" || current_mode == "DO_BLOCK")) {
+					prefix = "NEWLINE";
+				} 
+				else if (last_type == TK_END_COMMAND && current_mode == "EXPRESSION") {
+					prefix = "SPACE";
+				} 
+				else if (last_type == TK_WORD) {
+					prefix = "SPACE";
+				} 
+				else if (last_type == TK_START_BLOCK) {
+					prefix = "NEWLINE";
+				} 
+				else if (last_type == TK_END_EXPR) {
+					print_space();
+					prefix = "NEWLINE";
+				}
+				//cout << "last_type" << last_type << " " << endl ;
+				if (last_type != TK_END_BLOCK && in_array(tem_te , else_catch_finallys))       
+					print_newline();
+				else if(in_array(tem_te , line_starters) || prefix == "NEWLINE"){						
+					if(last_text == "else")
+						print_space();
+					else if((last_type == TK_START_EXPR || last_text == "=") && tem_te == "function"){
+					}
+					else if(last_type == TK_WORD && (last_text == "return" || last_text == "throw")){
+						print_space();
+					}
+					else if(last_type != TK_END_EXPR){
+						if((last_type != TK_START_EXPR || tem_te != "var") && last_text != ":"){
+							if (tem_te == "if" && last_type == TK_WORD && last_word == "else") {
+								// no newline for } else if {
+								print_space();
+							} 
+							else 
+								print_newline();								
+						}
+					}
+					else {
+						if (in_array(tem_te, line_starters) && last_text != ")"){
+							print_newline();
+						}
+					}					
+				}
+				else if (prefix == "SPACE") {
+					print_space();
+				}
+				print_token();
+				last_word = tem_te ;
 				
+				if(tem_te == "var"){
+					var_line = true ;
+					var_line_tainted = false ;
+				}
 				
+				break ;
+			
+			case TK_END_COMMAND :
+				print_token();
+				var_line = false ;
+				break ;
+			
+			case TK_STRING : 
 				
-			default : ;
+				if(last_type == TK_START_BLOCK || last_type == TK_END_BLOCK)
+					print_newline() ;
+				else if(last_type == TK_WORD){
+					print_space() ;
+				}
+				print_token() ; 
+				break ;
+		
+			case TK_OPERATOR : 
+				
+				start_delim = true ;
+				end_delim = true ;
+					if(var_line && tem_te != ","){
+					var_line_tainted = true ;
+					if(tem_te == ":")
+						var_line = false ;
+				}
+				
+				if(tem_te == ":" && in_case){
+					print_token();
+					print_newline();
+					break ;
+				}
+				
+				in_case = false ;
+				
+				if(tem_te == ","){
+					if(var_line){
+						if(var_line_tainted){
+							print_token();
+							print_newline();
+							var_line_tainted = false ;
+						}
+						else{
+							print_token();
+							print_space();
+						}
+					}
+					else if(last_type == TK_END_BLOCK){
+						print_token();
+						print_newline();
+					}
+					else{
+						if(current_mode == "BLOCK"){
+							print_token();
+							print_newline();
+						}
+						else{
+							print_token();
+							print_space();
+						}
+					}
+					break ;
+				}
+				else if(tem_te == "--" || tem_te == "++"){
+					if(last_text == ";"){
+						start_delim = true ;
+						end_delim = false ;
+					}
+					else{
+						start_delim = false ;
+						end_delim = false ;
+					}
+				}
+				else if(tem_te == "!" && last_type == TK_START_EXPR){
+					start_delim = false ;
+					end_delim = false ;
+				}
+				else if(last_type == TK_OPERATOR){
+					start_delim = false ;
+					end_delim = false ;
+				}
+				else if(last_type == TK_END_EXPR){
+					start_delim = true ;
+					end_delim = true ;
+				}
+				else if(tem_te == "."){
+					start_delim = false ;
+					end_delim = false ;
+				}
+				else if(tem_te == ":"){
+					//start_delim = last_text..... ;
+				}
+	
+				if(start_delim)
+					print_space();
+				
+				print_token();
+				
+				if(end_delim)
+					print_space();
+					
+				break;
+				
+			case TK_BLOCK_COMMENT : 
+				print_newline();
+				print_token();
+				print_newline();
+				break ;
+			
+			case TK_UNKNOWN : 
+				print_token();
+				break ;
+				
 		}
+		
+		last_type = tem_tp ;
+		last_text = tem_te ;
 	}
 	
+	string outputtofile = join(output) ;
+	cout << outputtofile << endl ;
 	
-	
-	
-	
-	
-	
-	
+	ofile.open(soutfilename.c_str());
+	if(ofile.is_open()){
+		ofile << outputtofile << endl ;
+		ofile.close();
+	}
+	else 
+		cout << "err" << endl ;
+		
 }
